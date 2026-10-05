@@ -81,6 +81,7 @@
   .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; }
   .pill.ok { background: var(--ok-weak); color: var(--ok); }
   .pill.bad { background: var(--bad-weak); color: var(--bad); }
+  .pill.info { background: var(--accent-weak); color: var(--accent); }
 
   .menu-wrap { position: relative; display: inline-block; }
   .menu {
@@ -227,10 +228,11 @@
     pageSize: 1000,
     grouped: false,
     truncated: false,
-    tooMany: false
+    sampled: false
   };
 
-  var MAX_VARS = 7;
+  var MAX_ENUM_VARS = 7;
+  var SAMPLE_SIZE = 1000;
 
   function strip(s) { return (s || "").replace(/[\s-]/g, ""); }
 
@@ -276,10 +278,42 @@
     return { cells: cells, varOrder: varOrder, varPos: varPos, length: s.length };
   }
 
+  function compose(fixedArr, keyPos, keys, d) {
+    var arr = fixedArr.slice();
+    for (var j = 0; j < keys.length; j++) {
+      var p = keyPos[j], val = "" + d[keys[j]];
+      for (var q = 0; q < p.length; q++) arr[p[q]] = val;
+    }
+    return arr.join("");
+  }
+
+  // 组合过多时随机抽样：固定其余变量，令覆盖末位的变量取使 Luhn 成立的值
+  function sampleGenerate(tpl, count) {
+    var keys = tpl.varOrder, n = keys.length;
+    var keyPos = keys.map(function (k) { return tpl.varPos[k]; });
+    var fixedArr = new Array(tpl.length);
+    for (var i = 0; i < tpl.length; i++) fixedArr[i] = tpl.cells[i].t === "fixed" ? tpl.cells[i].d : "0";
+    var lastPos = tpl.length - 1;
+    var adjust = tpl.cells[lastPos].t === "var" ? tpl.cells[lastPos].k : keys[n - 1];
+    var seen = {}, results = [], tries = 0, maxTries = count * 300;
+    while (results.length < count && tries < maxTries) {
+      tries++;
+      var d = {};
+      for (var j = 0; j < n; j++) if (keys[j] !== adjust) d[keys[j]] = (Math.random() * 10) | 0;
+      var cands = [];
+      for (var v = 0; v < 10; v++) { d[adjust] = v; if (luhnValid(compose(fixedArr, keyPos, keys, d))) cands.push(v); }
+      if (!cands.length) continue;
+      d[adjust] = cands[(Math.random() * cands.length) | 0];
+      var num = compose(fixedArr, keyPos, keys, d);
+      if (!seen[num]) { seen[num] = 1; results.push(num); }
+    }
+    return { results: results, totalCombos: Math.pow(10, n), sampled: true };
+  }
+
   function generate(tpl) {
     var keys = tpl.varOrder;
     var n = keys.length;
-    if (n > MAX_VARS) return { tooMany: true, totalCombos: Math.pow(10, n) };
+    if (n > MAX_ENUM_VARS) return sampleGenerate(tpl, SAMPLE_SIZE);
 
     var arr = new Array(tpl.length);
     for (var i = 0; i < tpl.length; i++) {
@@ -320,7 +354,7 @@
 
   function renderResults() {
     var r = $("#results");
-    if (state.mode !== "generate" || state.tooMany) { r.style.display = "none"; return; }
+    if (state.mode !== "generate") { r.style.display = "none"; return; }
     var total = state.results.length;
     var pages = Math.max(1, Math.ceil(total / state.pageSize));
     if (state.page > pages) state.page = pages;
@@ -331,10 +365,12 @@
     var to = Math.min(from + state.pageSize, total);
 
     $("#resultsTitle").innerHTML = "生成结果（显示 <b>" + (to - from) + "</b> / 共 <b>" + total.toLocaleString() + "</b> 条）" +
-      (state.truncated ? " · 已达上限" : "");
+      (state.truncated ? " · 已达上限" : "") + (state.sampled ? " · 随机抽样" : "");
     $("#pageInfo").textContent = "第 " + state.page + " / " + pages.toLocaleString() + " 页";
-    $("#resultsNote").textContent = "符合模板与 Luhn 校验的有效组合共 " + total.toLocaleString() +
-      " 种，按卡号顺序分页展示全部结果，每页最多 " + state.pageSize + " 条。";
+    $("#resultsNote").textContent = state.sampled
+      ? "模板组合过多，以上为随机抽样的 " + total.toLocaleString() + " 条有效卡号（非全量）。"
+      : "符合模板与 Luhn 校验的有效组合共 " + total.toLocaleString() +
+        " 种，按卡号顺序分页展示全部结果，每页最多 " + state.pageSize + " 条。";
 
     var html = "";
     for (var i = from; i < to; i++) {
@@ -392,17 +428,16 @@
     setTimeout(function () {
       var g = generate(tpl);
       state.template = raw;
-      if (g.tooMany) {
-        state.tooMany = true; state.results = [];
-        setStatus('<span class="pill bad">✕ 组合过多（10^' + tpl.varOrder.length + '），请增加固定数字缩小范围</span>');
+      state.sampled = !!g.sampled;
+      state.results = g.results;
+      state.truncated = !!g.truncated;
+      state.page = 1;
+      if (!state.results.length) {
+        setStatus('<span class="pill bad">✕ 没有符合模板的有效卡号</span>');
+      } else if (state.sampled) {
+        setStatus('<span class="pill info">≈ 组合约 10^' + tpl.varOrder.length + ' 种，已随机抽样 ' + state.results.length.toLocaleString() + " 条有效卡号</span>");
       } else {
-        state.tooMany = false;
-        state.results = g.results;
-        state.truncated = g.truncated;
-        state.page = 1;
-        setStatus(state.results.length
-          ? '<span class="pill ok">✓ 已生成 ' + state.results.length.toLocaleString() + " 条有效卡号</span>"
-          : '<span class="pill bad">✕ 没有符合模板的有效卡号</span>');
+        setStatus('<span class="pill ok">✓ 已生成 ' + state.results.length.toLocaleString() + " 条有效卡号</span>");
       }
       renderResults();
       hideOverlay();
