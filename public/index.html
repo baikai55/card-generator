@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>银行卡算号器 - Luhn Lab</title>
+<meta name="description" content="基于 Luhn 算法的银行卡号验证与生成工具，全部在浏览器本地计算。" />
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --text: #1c1f23;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --accent: #2563eb;
+    --accent-weak: #e8f0ff;
+    --ok: #128a4b;
+    --ok-weak: #e6f7ee;
+    --bad: #d14343;
+    --bad-weak: #fdecec;
+    --code-bg: #f1f3f5;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+    --radius: 14px;
+  }
+  html[data-theme="dark"] {
+    --bg: #0d1016;
+    --panel: #151a22;
+    --text: #e6e9ef;
+    --muted: #9aa4b2;
+    --line: #242c38;
+    --accent: #6ea0ff;
+    --accent-weak: #1b2740;
+    --ok: #57d39a;
+    --ok-weak: #12291f;
+    --bad: #ff7b7b;
+    --bad-weak: #2c1414;
+    --code-bg: #0f141b;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 20px 18px 64px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
+  .brand { font-weight: 700; letter-spacing: .02em; }
+  .brand a { color: var(--text); text-decoration: none; }
+  .theme-btn {
+    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+    padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: 13px;
+  }
+  header.hero { text-align: center; margin: 10px 0 26px; }
+  header.hero .kicker { font-size: 12px; letter-spacing: .28em; color: var(--muted); margin-bottom: 10px; }
+  header.hero h1 { margin: 0 0 10px; font-size: 34px; letter-spacing: -.01em; }
+  header.hero p { margin: 0 auto; max-width: 560px; color: var(--muted); }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+  .input-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .input-head .label { font-size: 13px; color: var(--muted); }
+  .badge { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--accent-weak); color: var(--accent); }
+  .input-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type="text"] {
+    flex: 1 1 320px; min-width: 0; padding: 12px 14px; font-size: 16px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; outline: none;
+  }
+  input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+  button.btn {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    padding: 11px 15px; border-radius: 10px; cursor: pointer; font-size: 14px; white-space: nowrap;
+  }
+  button.btn:hover { border-color: var(--accent); color: var(--accent); }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.btn.primary:hover { opacity: .92; color: #fff; }
+  button.btn:disabled { opacity: .45; cursor: not-allowed; }
+  .status { margin-top: 12px; font-size: 14px; }
+  .status .hint { color: var(--muted); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; }
+  .pill.ok { background: var(--ok-weak); color: var(--ok); }
+  .pill.bad { background: var(--bad-weak); color: var(--bad); }
+
+  .menu-wrap { position: relative; display: inline-block; }
+  .menu {
+    position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 250px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 6px; display: none;
+  }
+  .menu.open { display: block; }
+  .menu button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .menu button:hover { background: var(--accent-weak); color: var(--accent); }
+
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .results { margin-top: 18px; }
+  .results-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+  .results-title { font-size: 14px; color: var(--muted); }
+  .results-title b { color: var(--text); font-weight: 600; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pager { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; }
+  .pager .pageinfo { font-size: 13px; color: var(--muted); margin-left: auto; }
+  .list { border-top: 1px solid var(--line); }
+  .item { display: flex; gap: 12px; align-items: center; padding: 8px 6px; border-bottom: 1px solid var(--line); cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .item:hover { background: var(--accent-weak); }
+  .item .idx { color: var(--muted); font-size: 12px; min-width: 46px; text-align: right; }
+  .item .num { letter-spacing: .04em; }
+
+  details.doc { margin-top: 18px; }
+  h2.sec { font-size: 18px; margin: 34px 0 12px; }
+  h3 { font-size: 15px; margin: 0 0 4px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } header.hero h1 { font-size: 27px; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .card .eg { margin-top: 8px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--text); background: var(--code-bg); padding: 6px 8px; border-radius: 8px; display: inline-block; }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  ul.luhn { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+  .safe { margin-top: 22px; text-align: center; color: var(--muted); font-size: 13px; }
+  footer { margin-top: 30px; text-align: center; color: var(--muted); font-size: 13px; }
+  footer a { color: var(--muted); }
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(10px);
+    background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 999px; font-size: 13px;
+    opacity: 0; pointer-events: none; transition: .2s;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  .overlay.show { display: flex; }
+  .overlay .box { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 16px 22px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand"><a href="/">Luhn Lab</a></div>
+    <button class="theme-btn" id="themeBtn">当前: 跟随系统</button>
+  </div>
+
+  <header class="hero">
+    <div class="kicker">BANK CARD GENERATOR</div>
+    <h1>银行卡算号器.</h1>
+    <p>基于 Luhn 算法的银行卡号验证与生成工具。输入纯数字自动验证，输入含字母或 * 号的模板自动生成。</p>
+  </header>
+
+  <section class="panel">
+    <div class="input-head">
+      <span class="label">输入卡号或模板</span>
+      <span class="badge" id="modeBadge" style="display:none">验证模式</span>
+    </div>
+    <div class="input-row">
+      <input type="text" id="input" placeholder="输入卡号/模版" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="toolbar">
+      <div class="menu-wrap">
+        <button class="btn" id="filterBtn">模版筛选</button>
+        <div class="menu" id="filterMenu"></div>
+      </div>
+      <button class="btn" id="genTestBtn">生成测试</button>
+      <button class="btn" id="clearBtn">清空</button>
+    </div>
+
+    <div class="status" id="status"><span class="hint">输入 卡号/模版 开始使用</span></div>
+
+    <div class="results" id="results" style="display:none">
+      <div class="results-head">
+        <div class="results-title" id="resultsTitle"></div>
+        <div class="actions">
+          <button class="btn" id="groupBtn">每四位分组复制</button>
+          <button class="btn" id="copyPageBtn">复制当前页</button>
+        </div>
+      </div>
+      <p class="hint" id="resultsNote" style="color:var(--muted);font-size:13px;margin:0 0 8px">点击卡号复制单条，批量复制仅包含当前页（每行一条）。</p>
+      <div class="pager">
+        <button class="btn" data-pg="first">首页</button>
+        <button class="btn" data-pg="prev">上一页</button>
+        <button class="btn" data-pg="next">下一页</button>
+        <button class="btn" data-pg="last">末页</button>
+        <span class="pageinfo" id="pageInfo"></span>
+      </div>
+      <div class="list" id="list"></div>
+    </div>
+  </section>
+
+  <h2 class="sec">使用说明</h2>
+  <p style="color:var(--muted)">在链接中添加 <code>?input=621486******aaaa</code> 可自动填入卡号或模板。</p>
+  <div class="grid">
+    <div class="card"><h3>验证模式</h3><p>输入纯数字卡号，自动验证是否符合 Luhn 算法。</p><div class="eg">示例：6214 8600 0000 1111</div></div>
+    <div class="card"><h3>生成模式</h3><p>输入含字母或 * 的模板，自动生成符合 Luhn 算法的卡号。</p><div class="eg">示例：6214 86** **** aaaa</div></div>
+    <div class="card"><h3>字母规则</h3><p>相同字母对应相同数字（如 aaa → 000、111 等）；不同字母可能相同也可能不同（如 ab → 00、01、11 等）。</p></div>
+    <div class="card"><h3>星号规则</h3><p>每个 * 独立随机，可能相同也可能不同；如 ** → 00、01、10、11 等任意组合。</p></div>
+  </div>
+
+  <h2 class="sec">Luhn 算法</h2>
+  <div class="card">
+    <p>Luhn 算法是一种简单的校验和公式，用于验证各种身份识别码，如银行卡号、IMEI 号等。</p>
+    <ul class="luhn">
+      <li>从右向左，将奇数位数字相加</li>
+      <li>从右向左，将偶数位数字乘以 2，若结果大于 9 则减去 9，然后相加</li>
+      <li>将两个和相加，若结果能被 10 整除，则校验通过</li>
+    </ul>
+  </div>
+
+  <p class="safe"><strong>安全提示：</strong>卡号验证与生成均在浏览器本地计算。</p>
+
+  <footer>
+    © 2026 Luhn Lab · 仅用于支付表单与校验逻辑测试
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="overlay" id="overlay"><div class="box" id="overlayText">生成中…</div></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var $ = function (s) { return document.querySelector(s); };
+  var input = $("#input");
+
+  var state = {
+    mode: "idle",
+    template: null,
+    results: [],
+    page: 1,
+    pageSize: 1000,
+    grouped: false,
+    truncated: false,
+    tooMany: false
+  };
+
+  var MAX_VARS = 7;
+
+  function strip(s) { return (s || "").replace(/[\s-]/g, ""); }
+
+  function group4(s) { return s.replace(/(.{4})/g, "$1 ").trim(); }
+
+  function luhnValid(d) {
+    var sum = 0, dbl = false;
+    for (var i = d.length - 1; i >= 0; i--) {
+      var n = d.charCodeAt(i) - 48;
+      if (n < 0 || n > 9) return false;
+      if (dbl) { n *= 2; if (n > 9) n -= 9; }
+      sum += n; dbl = !dbl;
+    }
+    return sum % 10 === 0;
+  }
+
+  function luhnCheckDigit(prefix) {
+    var sum = 0, dbl = true;
+    for (var i = prefix.length - 1; i >= 0; i--) {
+      var n = prefix.charCodeAt(i) - 48;
+      if (dbl) { n *= 2; if (n > 9) n -= 9; }
+      sum += n; dbl = !dbl;
+    }
+    return (10 - (sum % 10)) % 10;
+  }
+
+  function parseTemplate(raw) {
+    var s = strip(raw);
+    if (!s) return { error: "empty" };
+    if (!/[a-z*]/i.test(s)) return null; // pure digits => validate mode
+    var cells = [], varPos = {}, varOrder = [];
+    for (var i = 0; i < s.length; i++) {
+      var c = s[i];
+      if (c >= "0" && c <= "9") { cells.push({ t: "fixed", d: c }); continue; }
+      var key;
+      if (c === "*") key = "*" + i;
+      else if (/[a-z]/i.test(c)) key = "L" + c.toLowerCase();
+      else return { error: "非法字符: " + c };
+      cells.push({ t: "var", k: key });
+      if (!varPos[key]) { varPos[key] = []; varOrder.push(key); }
+      varPos[key].push(i);
+    }
+    return { cells: cells, varOrder: varOrder, varPos: varPos, length: s.length };
+  }
+
+  function generate(tpl) {
+    var keys = tpl.varOrder;
+    var n = keys.length;
+    if (n > MAX_VARS) return { tooMany: true, totalCombos: Math.pow(10, n) };
+
+    var arr = new Array(tpl.length);
+    for (var i = 0; i < tpl.length; i++) {
+      arr[i] = tpl.cells[i].t === "fixed" ? tpl.cells[i].d : "0";
+    }
+    var keyPos = keys.map(function (k) { return tpl.varPos[k]; });
+    var digits = new Array(n).fill(0);
+    var results = [];
+    var overflow = false;
+
+    var done = false;
+    while (!done) {
+      var j;
+      for (j = 0; j < n; j++) {
+        var p = keyPos[j], d = "" + digits[j];
+        for (var q = 0; q < p.length; q++) arr[p[q]] = d;
+      }
+      var num = arr.join("");
+      if (luhnValid(num)) {
+        results.push(num);
+        if (results.length > 2000000) { overflow = true; break; }
+      }
+      j = n - 1;
+      for (;;) {
+        if (j < 0) { done = true; break; }
+        digits[j]++;
+        if (digits[j] <= 9) break;
+        digits[j] = 0; j--;
+      }
+    }
+    return { results: results, totalCombos: Math.pow(10, n), truncated: overflow };
+  }
+
+  function setStatus(html) { $("#status").innerHTML = html; }
+
+  function showOverlay(txt) { $("#overlayText").textContent = txt; $("#overlay").classList.add("show"); }
+  function hideOverlay() { $("#overlay").classList.remove("show"); }
+
+  function renderResults() {
+    var r = $("#results");
+    if (state.mode !== "generate" || state.tooMany) { r.style.display = "none"; return; }
+    var total = state.results.length;
+    var pages = Math.max(1, Math.ceil(total / state.pageSize));
+    if (state.page > pages) state.page = pages;
+    if (state.page < 1) state.page = 1;
+
+    r.style.display = "block";
+    var from = (state.page - 1) * state.pageSize;
+    var to = Math.min(from + state.pageSize, total);
+
+    $("#resultsTitle").innerHTML = "生成结果（显示 <b>" + (to - from) + "</b> / 共 <b>" + total.toLocaleString() + "</b> 条）" +
+      (state.truncated ? " · 已达上限" : "");
+    $("#pageInfo").textContent = "第 " + state.page + " / " + pages.toLocaleString() + " 页";
+    $("#resultsNote").textContent = "符合模板与 Luhn 校验的有效组合共 " + total.toLocaleString() +
+      " 种，按卡号顺序分页展示全部结果，每页最多 " + state.pageSize + " 条。";
+
+    var html = "";
+    for (var i = from; i < to; i++) {
+      var num = state.results[i];
+      html += '<div class="item" data-num="' + num + '"><span class="idx">' + (i + 1) + '.</span><span class="num">' +
+        (state.grouped ? group4(num) : num) + "</span></div>";
+    }
+    $("#list").innerHTML = html;
+
+    var pg = document.querySelectorAll("[data-pg]");
+    pg.forEach(function (b) {
+      var a = b.getAttribute("data-pg");
+      b.disabled = (a === "first" || a === "prev") ? state.page <= 1 : state.page >= pages;
+    });
+  }
+
+  function update() {
+    var raw = input.value;
+    var cleaned = strip(raw);
+    var badge = $("#modeBadge");
+
+    if (!cleaned) {
+      state.mode = "idle"; state.results = []; state.template = null;
+      badge.style.display = "none";
+      setStatus('<span class="hint">输入 卡号/模版 开始使用</span>');
+      $("#clearBtn").disabled = true;
+      renderResults();
+      return;
+    }
+
+    $("#clearBtn").disabled = false;
+
+    var digitsOnly = /^[0-9]+$/.test(cleaned);
+    if (digitsOnly && !/[a-z*]/i.test(raw)) {
+      state.mode = "validate"; state.results = []; state.template = null;
+      badge.style.display = "inline-block"; badge.textContent = "验证模式";
+      var ok = luhnValid(cleaned);
+      setStatus('<span class="pill ' + (ok ? "ok" : "bad") + '">' + (ok ? "✓ Luhn 校验通过" : "✕ Luhn 校验失败") +
+        "</span> <span class='hint'>共 " + cleaned.length + " 位</span>");
+      renderResults();
+      return;
+    }
+
+    var tpl = parseTemplate(raw);
+    badge.style.display = "inline-block"; badge.textContent = "生成模式";
+    if (tpl && tpl.error) {
+      state.mode = "generate"; state.results = []; state.template = null;
+      setStatus('<span class="pill bad">✕ ' + tpl.error + "</span>");
+      renderResults();
+      return;
+    }
+
+    state.mode = "generate";
+    showOverlay("生成中…");
+    setTimeout(function () {
+      var g = generate(tpl);
+      state.template = raw;
+      if (g.tooMany) {
+        state.tooMany = true; state.results = [];
+        setStatus('<span class="pill bad">✕ 组合过多（10^' + tpl.varOrder.length + '），请增加固定数字缩小范围</span>');
+      } else {
+        state.tooMany = false;
+        state.results = g.results;
+        state.truncated = g.truncated;
+        state.page = 1;
+        setStatus(state.results.length
+          ? '<span class="pill ok">✓ 已生成 ' + state.results.length.toLocaleString() + " 条有效卡号</span>"
+          : '<span class="pill bad">✕ 没有符合模板的有效卡号</span>');
+      }
+      renderResults();
+      hideOverlay();
+    }, 20);
+  }
+
+  // ---- events ----
+  var timer = null;
+  input.addEventListener("input", function () {
+    clearTimeout(timer);
+    timer = setTimeout(update, 220);
+  });
+
+  $("#clearBtn").addEventListener("click", function () {
+    input.value = ""; update(); input.focus();
+  });
+
+  $("#groupBtn").addEventListener("click", function () {
+    state.grouped = !state.grouped;
+    this.textContent = state.grouped ? "分组复制：开" : "每四位分组复制";
+    renderResults();
+  });
+
+  function copyText(text, msg) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast(msg); }, function () { fallback(text, msg); });
+    } else fallback(text, msg);
+  }
+  function fallback(text, msg) {
+    var ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast(msg); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  $("#list").addEventListener("click", function (e) {
+    var item = e.target.closest(".item");
+    if (!item) return;
+    var num = item.getAttribute("data-num");
+    copyText(state.grouped ? group4(num) : num, "已复制 " + num);
+  });
+
+  $("#copyPageBtn").addEventListener("click", function () {
+    if (!state.results.length) return;
+    var from = (state.page - 1) * state.pageSize;
+    var to = Math.min(from + state.pageSize, state.results.length);
+    var lines = state.results.slice(from, to).map(function (n) { return state.grouped ? group4(n) : n; });
+    copyText(lines.join("\n"), "已复制当前页 " + lines.length + " 条");
+  });
+
+  document.querySelectorAll("[data-pg]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var pages = Math.max(1, Math.ceil(state.results.length / state.pageSize));
+      var a = this.getAttribute("data-pg");
+      if (a === "first") state.page = 1;
+      else if (a === "prev") state.page--;
+      else if (a === "next") state.page++;
+      else if (a === "last") state.page = pages;
+      renderResults();
+    });
+  });
+
+  // 生成测试：从当前模板随机取一条有效号填入并校验
+  $("#genTestBtn").addEventListener("click", function () {
+    function fillRandomFromResults() {
+      if (!state.results.length) return false;
+      var pick = state.results[Math.floor(Math.random() * state.results.length)];
+      input.value = pick;
+      update();
+      toast("已生成测试号：" + pick);
+      return true;
+    }
+    if (state.mode === "generate" && state.results.length) { fillRandomFromResults(); return; }
+
+    showOverlay("生成中…");
+    setTimeout(function () {
+      var tpl = parseTemplate("6214 86** **** aaaa");
+      var g = generate(tpl);
+      hideOverlay();
+      if (g.results && g.results.length) {
+        var pick = g.results[Math.floor(Math.random() * g.results.length)];
+        input.value = pick;
+        update();
+        toast("已生成测试号：" + pick);
+      }
+    }, 20);
+  });
+
+  // 模版筛选（常用示例）
+  var PRESETS = [
+    { t: "6214 86** **** aaaa", d: "示例模板（银联 62 开头）" },
+    { t: "6222 62** **** ****", d: "62 开头借记卡模板" },
+    { t: "6212 26** **** ****", d: "工商银行测试模板" },
+    { t: "4000 00** **** ****", d: "Visa 测试模板" },
+    { t: "5100 00** **** ****", d: "Mastercard 测试模板" },
+    { t: "62** **** **** ****", d: "仅固定前 2 位" }
+  ];
+  var menu = $("#filterMenu");
+  PRESETS.forEach(function (p) {
+    var b = document.createElement("button");
+    b.innerHTML = '<b>' + p.t + "</b><br><span style='color:var(--muted);font-size:12px'>" + p.d + "</span>";
+    b.addEventListener("click", function () {
+      input.value = p.t; menu.classList.remove("open"); update();
+    });
+    menu.appendChild(b);
+  });
+  $("#filterBtn").addEventListener("click", function (e) {
+    e.stopPropagation(); menu.classList.toggle("open");
+  });
+  document.addEventListener("click", function () { menu.classList.remove("open"); });
+
+  // 主题
+  var THEMES = ["system", "light", "dark"];
+  var THEME_LABEL = { system: "当前: 跟随系统", light: "当前: 浅色", dark: "当前: 深色" };
+  var themeIdx = 0;
+  function applyTheme() {
+    var t = THEMES[themeIdx];
+    if (t === "system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", t);
+    $("#themeBtn").textContent = THEME_LABEL[t];
+  }
+  $("#themeBtn").addEventListener("click", function () {
+    themeIdx = (themeIdx + 1) % THEMES.length; applyTheme();
+  });
+  applyTheme();
+
+  // toast
+  var toastTimer = null;
+  function toast(msg) {
+    var el = $("#toast"); el.textContent = msg; el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove("show"); }, 1600);
+  }
+
+  // URL 预填
+  var params = new URLSearchParams(location.search);
+  if (params.get("input")) { input.value = params.get("input"); update(); }
+})();
+</script>
+</body>
+</html>
