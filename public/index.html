@@ -100,7 +100,8 @@
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .pager { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px; }
   .pager .pageinfo { font-size: 13px; color: var(--muted); margin-left: auto; }
-  .list { border-top: 1px solid var(--line); }
+  .list { border-top: 1px solid var(--line); height: 420px; overflow-y: auto; overscroll-behavior: contain; }
+  @media (max-width: 620px) { .list { height: 320px; } }
   .item { display: flex; gap: 12px; align-items: center; padding: 8px 6px; border-bottom: 1px solid var(--line); cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .item:hover { background: var(--accent-weak); }
   .item .idx { color: var(--muted); font-size: 12px; min-width: 46px; text-align: right; }
